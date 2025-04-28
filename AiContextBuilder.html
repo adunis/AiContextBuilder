@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Context Builder from Text Files</title>
+    <style>
+        /* --- Base Styles --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            line-height: 1.6; padding: 20px; background-color: #f8f9fa; color: #212529;
+        }
+        .container {
+            background-color: #ffffff; padding: 30px; border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 900px; margin: auto;
+        }
+        h1, h2, h3 {
+            color: #343a40; border-bottom: 1px solid #dee2e6; padding-bottom: 10px; margin-top: 25px;
+        }
+        h1:first-of-type { margin-top: 0; }
+        label { display: block; margin-bottom: 8px; font-weight: 500; }
+        .input-wrapper label {
+             display: inline-block; background-color: #007bff; color: white; border: none;
+             padding: 10px 15px; border-radius: 5px; cursor: pointer; margin-bottom: 20px;
+             transition: background-color 0.2s ease; font-weight: normal;
+        }
+         .input-wrapper label:hover { background-color: #0056b3; }
+        input[type="file"] { opacity: 0; position: absolute; z-index: -1; }
+        #selected-folder-info { margin-bottom: 15px; font-style: italic; color: #6c757d; }
+
+        /* --- File Type Filter --- */
+        #file-type-filter-container {
+            margin-bottom: 15px; padding: 10px; background-color: #f1f3f5;
+            border: 1px solid #dee2e6; border-radius: 4px;
+        }
+        #file-type-filter-container h3 {
+            margin-top: 0; margin-bottom: 10px; font-size: 1.1em;
+            border-bottom: none; padding-bottom: 0;
+        }
+        #file-type-filter-container label {
+            display: inline-block; /* Align checkboxes horizontally */
+            margin-right: 15px;
+            font-weight: normal;
+            cursor: pointer;
+        }
+         #file-type-filter-container input[type="checkbox"] {
+             margin-right: 5px; vertical-align: middle; cursor: pointer;
+         }
+
+        /* --- File List & Folder Styling --- */
+         #fileListActions { /* NEW: Container for list actions */
+            display: flex;
+            justify-content: space-between; /* Align items */
+            align-items: center;
+            margin-bottom: 5px; /* Space below actions */
+            padding: 0 5px; /* Align with list padding */
+        }
+        #fileListActions h2 { /* Adjust heading margin */
+             margin-top: 10px; /* Reduced top margin */
+             margin-bottom: 5px;
+             border-bottom: none;
+             padding-bottom: 0;
+             flex-grow: 1; /* Allow heading to take space */
+        }
+        #selectAllVisibleButton { /* NEW: Style for the select all button */
+             padding: 5px 10px;
+             font-size: 0.9em;
+             background-color: #6c757d; /* Gray */
+             border: none;
+             color: white;
+             border-radius: 4px;
+             cursor: pointer;
+             transition: background-color 0.2s ease;
+             margin-left: 10px; /* Space from heading */
+        }
+        #selectAllVisibleButton:hover:not(:disabled) {
+             background-color: #5a6268;
+        }
+        #selectAllVisibleButton:disabled {
+             background-color: #ced4da;
+             cursor: not-allowed;
+        }
+
+        #fileList {
+            margin-bottom: 20px; max-height: 400px; /* Adjusted height slightly */
+            overflow-y: auto; border: 1px solid #dee2e6; padding: 15px;
+             background-color: #ffffff; border-radius: 4px;
+        }
+        .folder-header {
+            display: flex; align-items: center; gap: 8px; font-weight: bold;
+            margin-top: 12px; margin-bottom: 5px; padding: 5px;
+            border-bottom: 1px dashed #e9ecef; color: #495057;
+            position: relative; user-select: none; transition: background-color 0.15s ease;
+        }
+         .folder-header:hover { background-color: #f1f3f5; }
+         .folder-header:first-child { margin-top: 0; }
+         .folder-select-all { margin: 0; flex-shrink: 0; cursor: pointer; }
+         .folder-name { flex-grow: 1; cursor: pointer; padding: 3px 0; }
+         .folder-expand-indicator {
+            font-weight: bold; color: #007bff; width: 15px; text-align: center;
+             flex-shrink: 0; cursor: pointer; padding: 3px;
+         }
+         .folder-header.expanded .folder-expand-indicator::before { content: '−'; }
+         .folder-header:not(.expanded) .folder-expand-indicator::before { content: '+'; }
+        .file-container {
+            display: none; padding-left: 25px; border-left: 2px solid #e9ecef;
+            margin-left: 10px; margin-top: 5px;
+        }
+        .file-container.expanded { display: block; }
+        .file-item { /* label */
+            display: block; margin-bottom: 5px; padding: 4px 0 4px 5px;
+            border-radius: 3px; transition: background-color 0.2s ease; position: relative;
+        }
+        .file-item:hover { background-color: #f8f9fa; }
+        .file-item input[type="checkbox"] {
+            margin-right: 10px; vertical-align: middle; cursor: pointer;
+        }
+        .file-item span { vertical-align: middle; font-size: 0.95em; }
+         .file-item .file-path { font-size: 0.8em; color: #6c757d; margin-left: 5px; }
+
+        /* --- Buttons & Output Styling --- */
+         #actionButtonsContainer { /* NEW: Group for Generate/Copy */
+             margin-top: 20px;
+        }
+        button { /* General button styling */
+            background-color: #28a745; color: white; border: none; padding: 12px 20px;
+            border-radius: 5px; cursor: pointer; font-size: 1em; margin-right: 10px;
+            transition: background-color 0.2s ease;
+        }
+        button:hover:not(:disabled) { background-color: #218838; }
+        button:disabled { background-color: #ced4da; cursor: not-allowed; color: #6c757d; }
+        button#copyButton { background-color: #17a2b8; }
+         button#copyButton:hover:not(:disabled) { background-color: #117a8b; }
+
+        textarea#output { /* WIDER TEXT AREA */
+            width: 100%; /* Use full container width */
+            box-sizing: border-box; /* Include padding/border in width calculation */
+            height: 380px; /* Increased height */
+            margin-top: 20px; padding: 15px; border: 1px solid #ced4da; border-radius: 4px;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 0.9em; line-height: 1.5; background-color: #f8f9fa;
+        }
+        #status { margin-top: 15px; min-height: 1.6em; }
+        .error { color: #dc3545; font-weight: bold; }
+        .success { color: #28a745; font-weight: bold; }
+        .warning { color: #ffc107; font-weight: 500; }
+        .info { color: #6c757d; font-style: italic; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>AI Context Builder</h1>
+    <p>Load text-based files from a folder. Filter by type, select files/folders, and generate a combined text block for AI context.</p>
+    <p class="info">Note: Folder selection works best in Chromium-based browsers.</p>
+
+    <div class="input-wrapper">
+        <label for="fileInput">1. Select Folder Containing Files</label>
+        <input type="file" id="fileInput" webkitdirectory directory multiple>
+    </div>
+    <div id="selected-folder-info"></div>
+
+    <!-- File Type Filter Section -->
+    <div id="file-type-filter-container" style="display: none;">
+         <h3>Filter Displayed File Types:</h3>
+         <div id="file-type-filters"></div>
+    </div>
+
+     <!-- File List Actions -->
+     <div id="fileListActions">
+         <h2>2. Choose Files to Include:</h2>
+         <button id="selectAllVisibleButton" disabled>Select All Visible</button>
+     </div>
+
+    <!-- File List -->
+    <div id="fileList">
+        <p class="info">Select a folder to load files.</p>
+    </div>
+
+    <!-- Generate/Copy Buttons -->
+    <div id="actionButtonsContainer">
+        <button id="generateButton" disabled>3. Generate Combined Text</button>
+        <button id="copyButton" disabled>Copy to Clipboard</button>
+    </div>
+
+    <h2>Combined Text Output:</h2>
+    <textarea id="output" readonly placeholder="Generated text from selected files will appear here..."></textarea>
+    <div id="status"></div>
+
+</div>
+<script>
+    // --- Constants and Variables ---
+    const fileInput = document.getElementById('fileInput');
+    const fileListDiv = document.getElementById('fileList');
+    const generateButton = document.getElementById('generateButton');
+    const copyButton = document.getElementById('copyButton');
+    const outputTextArea = document.getElementById('output');
+    const statusDiv = document.getElementById('status');
+    const selectedFolderInfoDiv = document.getElementById('selected-folder-info');
+    const filterContainer = document.getElementById('file-type-filter-container');
+    const filterCheckboxesDiv = document.getElementById('file-type-filters');
+    const selectAllVisibleButton = document.getElementById('selectAllVisibleButton');
+
+       // Allowed text-based extensions (use your expanded list here)
+       const allowedTextExtensions = [
+        // Common Data Formats
+        '.json', '.xml', '.yaml', '.yml', '.csv', '.tsv', '.ini', '.toml', '.properties', '.env',
+        // Web Development
+        '.html', '.htm', '.css', '.js', '.jsx', '.ts', '.tsx', '.scss', '.sass', '.less', '.vue', '.svelte',
+        // Programming Languages (General)
+        '.txt', '.py', '.java', '.cs', '.c', '.h', '.cpp', '.hpp', '.cxx', '.hxx', '.rb', '.php', '.go',
+        '.rs', '.swift', '.kt', '.kts', '.pl', '.lua', '.scala', '.groovy', '.dart', '.sh', '.bash',
+        '.zsh', '.ps1', '.bat', '.sql', '.r', '.m', '.mm', '.fs', '.fsx', '.clj', '.cljs', '.cljc',
+        '.edn', '.ex', '.exs', '.erl', '.hrl', '.hs', '.lhs', '.jl', '.lisp', '.lsp', '.pas',
+        '.f', '.for', '.f90', '.f95', '.asm', '.md', '.markdown', '.rst', '.tex', '.adoc',
+        '.asciidoc', '.wiki', '.gradle', '.tf', '.dockerfile', '.conf', '.config', '.log',
+        '.gitignore', '.gitattributes'
+     ];
+
+    let loadedFiles = [];
+    let selectedRootPathPrefix = '';
+    let availableExtensions = new Set();
+
+
+    // --- Core Functions ---
+
+    function handleFileSelect(event) {
+        const files = event.target.files;
+        if (!files.length) {
+            fileListDiv.innerHTML = '<p class="info">No folder selected or folder is empty.</p>';
+            selectedFolderInfoDiv.textContent = ''; filterContainer.style.display = 'none';
+            generateButton.disabled = true; copyButton.disabled = true; selectAllVisibleButton.disabled = true; selectAllVisibleButton.textContent = 'Select All Visible';
+            loadedFiles = []; selectedRootPathPrefix = ''; availableExtensions.clear();
+            return;
+        }
+        selectedRootPathPrefix = '';
+        if (files.length > 0 && files[0].webkitRelativePath) { /* ... Determine Root Path Prefix ... */ const firstPath = files[0].webkitRelativePath; const firstSlashIndex = firstPath.indexOf('/'); if (firstSlashIndex > -1) { selectedRootPathPrefix = firstPath.substring(0, firstSlashIndex + 1); } }
+        const directoryName = selectedRootPathPrefix ? selectedRootPathPrefix.slice(0, -1) : 'Selected Folder';
+        selectedFolderInfoDiv.textContent = `Selected folder: "${directoryName}" (Processing...)`;
+
+        loadedFiles = []; availableExtensions.clear();
+        fileListDiv.innerHTML = '<p class="info">Loading and parsing files...</p>';
+        statusDiv.textContent = ''; outputTextArea.value = '';
+        copyButton.disabled = true; generateButton.disabled = true; selectAllVisibleButton.disabled = true; selectAllVisibleButton.textContent = 'Select All Visible';
+        filterContainer.style.display = 'none';
+
+        let filesProcessed = 0; let validFilesFound = 0; const filePromises = [];
+        for (const file of files) { /* ... Filter by extension, read files, push promises ... */ const lowerCaseName = file.name.toLowerCase(); const extension = lowerCaseName.substring(lowerCaseName.lastIndexOf('.')); if (file.name[0] !== '.' && allowedTextExtensions.includes(extension)) { validFilesFound++; availableExtensions.add(extension); const promise = readFile(file).then(data => { loadedFiles.push({ name: file.name, path: file.webkitRelativePath || file.name, data: data, extension: extension }); }).catch(error => { statusDiv.innerHTML += `<p class="error">Error reading ${file.webkitRelativePath || file.name}: ${error.message}</p>`; }).finally(() => { filesProcessed++; }); filePromises.push(promise); } else { filesProcessed++; } }
+
+        Promise.allSettled(filePromises).then(() => {
+             loadedFiles.sort((a, b) => a.path.localeCompare(b.path));
+             populateFileTypeFilters();
+             displayFileList(); // Display + Set initial button state
+
+             if (loadedFiles.length > 0) {
+                  selectedFolderInfoDiv.textContent = `Selected folder: "${directoryName}"`; // Update final text
+                  statusDiv.innerHTML = `<p class="info">Found ${loadedFiles.length} supported text file(s). Adjust filters and select files.</p>`;
+                  filterContainer.style.display = 'block';
+             } else if (validFilesFound === 0 && files.length > 0) { /* ... No supported files found message ... */ fileListDiv.innerHTML = `<p class="warning">No supported text files (${allowedTextExtensions.join(', ')}) found in the selected folder.</p>`; selectedFolderInfoDiv.textContent = `Selected folder: "${directoryName}"`; statusDiv.innerHTML = '<p class="warning">No supported files found.</p>'; filterContainer.style.display = 'none'; }
+             else { /* ... Load failed message ... */ fileListDiv.innerHTML = `<p class="error">Some files were found but could not be read. Check console for errors.</p>`; selectedFolderInfoDiv.textContent = `Selected folder: "${directoryName}"`; statusDiv.innerHTML = '<p class="error">Failed to load some or all files.</p>'; filterContainer.style.display = 'none'; }
+             fileInput.value = '';
+        });
+    }
+
+    function readFile(file) { /* Unchanged */ return new Promise((resolve, reject) => { const reader = new FileReader(); const lowerCaseName = file.name.toLowerCase(); const isJson = lowerCaseName.endsWith('.json'); reader.onload = (e) => { const textContent = e.target.result; if (isJson) { try { const json = JSON.parse(textContent); if (typeof json !== 'object' || json === null) { throw new Error('Not a JSON object'); } resolve({ type: 'json', content: json }); } catch (err) { reject(new Error(`Invalid JSON (${err.message})`)); } } else { resolve({ type: 'text', content: textContent }); } }; reader.onerror = (e) => { reject(new Error(`File read error`)); }; reader.readAsText(file); }); }
+    function stripHtml(html) { /* Unchanged */ if (!html || typeof html !== 'string') return ''; try { const template = document.createElement('template'); template.innerHTML = html; return template.content.textContent || ""; } catch (e) { try { const doc = new DOMParser().parseFromString(html, 'text/html'); return doc.body.textContent || ""; } catch(e2) { return html; } } }
+    function formatGenericEntry(file) { /* Unchanged */ const fileData = file.data; if (!fileData) return `--- Error: Could not process ${file.path} ---`; const sourcePath = file.path; let entryName = file.name; let outputContent = ''; if (fileData.type === 'json') { const jsonData = fileData.content; entryName = jsonData.name || jsonData.title || file.name.replace('.json', ''); let foundContent = ''; const contentFields = ['description', 'content', 'text', 'body', 'entry_parsed', 'entry']; for (const field of contentFields) { if (jsonData[field] && typeof jsonData[field] === 'string') { foundContent = stripHtml(jsonData[field]).replace(/\s\s+/g, ' ').trim(); break; } } if (foundContent) { outputContent = `Content:\n${foundContent}\n`; } else { outputContent = `Full Data (JSON):\n`; try { outputContent += JSON.stringify(jsonData, null, 2); } catch (e) { outputContent += "(Error stringifying JSON)"; } outputContent += `\n`; } } else { entryName = file.name; outputContent = `Content:\n${fileData.content || '(Empty file)'}\n`; } let output = `--- Entry: ${entryName} ---\n`; output += `Source: ${sourcePath.replace(selectedRootPathPrefix, '')}\n`; output += `Type: ${fileData.type} (${file.extension})\n`; output += `\n${outputContent}`; output += `--- End Entry: ${entryName} ---\n\n`; return output; }
+    function generateOutput() { /* Unchanged */ const selectedIndices = Array.from(fileListDiv.querySelectorAll('.file-item input[type="checkbox"]:checked')).map(cb => parseInt(cb.value)); if (selectedIndices.length === 0) { outputTextArea.value = 'No files selected.'; statusDiv.innerHTML = '<p class="warning">No files selected.</p>'; copyButton.disabled = true; return; } let combinedOutput = `Context Information from ${selectedIndices.length} Selected Source(s):\n`; if(selectedRootPathPrefix) { combinedOutput += `Base Folder: ${selectedRootPathPrefix.slice(0,-1)}\n`; } combinedOutput += `========================================\n\n`; let errorCount = 0; selectedIndices.forEach(index => { const file = loadedFiles[index]; if (file) { try { combinedOutput += formatGenericEntry(file); } catch (error) { combinedOutput += `--- Error formatting ${file.path}: ${error.message} ---\n\n`; console.error(`Error formatting file ${file.path}:`, error); errorCount++; } } }); outputTextArea.value = combinedOutput; copyButton.disabled = false; if (errorCount > 0) { statusDiv.innerHTML = `<p class="error">Generated output with ${errorCount} formatting error(s).</p>`; } else { statusDiv.innerHTML = `<p class="success">Generated combined text from ${selectedIndices.length} file(s).</p>`; } outputTextArea.scrollTop = 0; }
+    function copyOutputToClipboard() { /* Unchanged */ if (!outputTextArea.value || outputTextArea.value.startsWith('No files selected.')) { statusDiv.innerHTML = `<p class="warning">Nothing to copy.</p>`; return; } navigator.clipboard.writeText(outputTextArea.value).then(() => { statusDiv.innerHTML = '<p class="success">Output copied to clipboard!</p>'; const originalText = copyButton.textContent; copyButton.textContent = 'Copied!'; copyButton.disabled = true; setTimeout(() => { copyButton.textContent = originalText; copyButton.disabled = false; }, 1500); }).catch(err => { statusDiv.innerHTML = `<p class="error">Failed to copy automatically: ${err}. Please copy manually.</p>`; console.error('Clipboard copy error:', err); outputTextArea.select(); outputTextArea.setSelectionRange(0, 99999); alert('Could not copy automatically. Text selected for manual copy.'); }); }
+
+    // --- Path and Display Logic ---
+    function getRelativeDirectory(fullPath) { /* Unchanged */ let relativePath = fullPath.replace(selectedRootPathPrefix, ''); const lastSlash = relativePath.lastIndexOf('/'); if (lastSlash === -1 || lastSlash === 0) { return '/'; } return relativePath.substring(0, lastSlash); }
+    function populateFileTypeFilters() { /* Unchanged */ filterCheckboxesDiv.innerHTML = ''; const sortedExtensions = Array.from(availableExtensions).sort(); sortedExtensions.forEach(ext => { const label = document.createElement('label'); const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.classList.add('file-type-filter'); checkbox.value = ext; checkbox.checked = true; label.appendChild(checkbox); label.appendChild(document.createTextNode(` ${ext}`)); filterCheckboxesDiv.appendChild(label); }); }
+    function getActiveFilters() { /* Unchanged */ const active = new Set(); filterCheckboxesDiv.querySelectorAll('.file-type-filter:checked').forEach(cb => { active.add(cb.value); }); return active; }
+
+    function updateFolderCheckboxState(folderCheckbox) { // Unchanged - Logic remains correct
+        if (!folderCheckbox) return;
+        const containerId = folderCheckbox.dataset.folderContainerId;
+        const container = document.getElementById(containerId);
+        if (!container) { /* console.error("Container not found...", containerId); */ return; } // Less verbose error
+        const fileCheckboxes = container.querySelectorAll('.file-item input[type="checkbox"]');
+        if (fileCheckboxes.length === 0) { folderCheckbox.checked = false; folderCheckbox.indeterminate = false; return; }
+        let allChecked = true; let noneChecked = true;
+        fileCheckboxes.forEach(cb => { if (cb.checked) noneChecked = false; else allChecked = false; });
+        if (allChecked) { folderCheckbox.checked = true; folderCheckbox.indeterminate = false; }
+        else if (noneChecked) { folderCheckbox.checked = false; folderCheckbox.indeterminate = false; }
+        else { folderCheckbox.checked = false; folderCheckbox.indeterminate = true; }
+    }
+
+    // *** NEW *** Helper function to update the Select/Deselect All button state
+    function updateSelectAllButtonState() {
+        const visibleFileCheckboxes = fileListDiv.querySelectorAll('.file-item input[type="checkbox"]');
+        if (visibleFileCheckboxes.length === 0) {
+            selectAllVisibleButton.disabled = true;
+            selectAllVisibleButton.textContent = 'Select All Visible';
+            return;
+        }
+
+        let allVisibleChecked = true;
+        visibleFileCheckboxes.forEach(cb => {
+            if (!cb.checked) {
+                allVisibleChecked = false;
+            }
+        });
+
+        selectAllVisibleButton.disabled = false; // Enable if items are visible
+        if (allVisibleChecked) {
+            selectAllVisibleButton.textContent = 'Deselect All Visible';
+        } else {
+            selectAllVisibleButton.textContent = 'Select All Visible';
+        }
+    }
+
+    // --- displayFileList: Renders list and manages button states ---
+    function displayFileList() {
+        if (availableExtensions.size > 0 && filterCheckboxesDiv.children.length === 0) { populateFileTypeFilters(); filterContainer.style.display = 'block'; }
+        else if (availableExtensions.size === 0) { filterContainer.style.display = 'none'; }
+
+        const activeFilters = getActiveFilters();
+        fileListDiv.innerHTML = '';
+
+        let currentRelativeDir = null; let fileContainer = null; let folderIndex = 0; let itemsDisplayed = 0;
+
+        loadedFiles.forEach((file, index) => { /* ... Filter check, create headers/containers/file items as before ... */ if (!activeFilters.has(file.extension)) return; const relativeDirectory = getRelativeDirectory(file.path); if (relativeDirectory !== currentRelativeDir) { currentRelativeDir = relativeDirectory; folderIndex++; const containerId = `folder-container-${folderIndex}`; const header = document.createElement('div'); header.classList.add('folder-header'); header.dataset.controlsContainerId = containerId; const folderCheckbox = document.createElement('input'); folderCheckbox.type = 'checkbox'; folderCheckbox.classList.add('folder-select-all'); folderCheckbox.title = `Select/Deselect all visible files in ${currentRelativeDir}`; folderCheckbox.dataset.folderContainerId = containerId; const expandIndicator = document.createElement('span'); expandIndicator.classList.add('folder-expand-indicator'); expandIndicator.title = 'Expand/Collapse Folder'; const folderNameSpan = document.createElement('span'); folderNameSpan.classList.add('folder-name'); folderNameSpan.textContent = (currentRelativeDir === '/') ? '(Root Folder)' : currentRelativeDir; header.appendChild(folderCheckbox); header.appendChild(expandIndicator); header.appendChild(folderNameSpan); fileListDiv.appendChild(header); fileContainer = document.createElement('div'); fileContainer.classList.add('file-container'); fileContainer.id = containerId; fileListDiv.appendChild(fileContainer); } if (fileContainer) { itemsDisplayed++; const itemLabel = document.createElement('label'); itemLabel.classList.add('file-item'); itemLabel.htmlFor = `file-checkbox-${index}`; const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.id = `file-checkbox-${index}`; checkbox.value = index; checkbox.checked = false; const nameSpan = document.createElement('span'); let displayName = file.name; if (file.data.type === 'json' && (file.data.content.name || file.data.content.title)) { displayName = file.data.content.name || file.data.content.title; } nameSpan.textContent = displayName; const pathSpan = document.createElement('span'); pathSpan.classList.add('file-path'); pathSpan.textContent = `[${file.name}]`; itemLabel.appendChild(checkbox); itemLabel.appendChild(nameSpan); itemLabel.appendChild(pathSpan); fileContainer.appendChild(itemLabel); } });
+
+        // --- Update UI Based on Visibility ---
+        if (itemsDisplayed === 0 && loadedFiles.length > 0) {
+             fileListDiv.innerHTML = '<p class="info">No files match the current filter selection.</p>';
+             generateButton.disabled = true;
+         } else if (itemsDisplayed === 0 && loadedFiles.length === 0) {
+             if (!fileListDiv.querySelector('p')) { fileListDiv.innerHTML = '<p class="info">Select a folder to load files.</p>'; }
+             generateButton.disabled = true;
+         } else {
+             generateButton.disabled = false;
+             document.querySelectorAll('.folder-select-all').forEach(updateFolderCheckboxState);
+         }
+        // Always update the Select All button state after rendering
+        updateSelectAllButtonState();
+    }
+
+
+    // --- Event Listeners ---
+
+    // Listener for clicks within the file list (Expand/Collapse)
+    fileListDiv.addEventListener('click', (event) => { /* Unchanged */ const target = event.target; if (target.classList.contains('folder-expand-indicator') || target.classList.contains('folder-name')) { const header = target.closest('.folder-header'); if (header && header.dataset.controlsContainerId) { const containerId = header.dataset.controlsContainerId; const container = document.getElementById(containerId); if (container) { header.classList.toggle('expanded'); container.classList.toggle('expanded'); } } } });
+
+     // Listener for Checkbox Changes within the file list (Select/Deselect File/Folder)
+     fileListDiv.addEventListener('change', (event) => {
+         const target = event.target;
+         let folderCheckboxToUpdate = null; // Keep track if we need to update a folder state
+
+         if (target.classList.contains('folder-select-all')) {
+             const folderCheckbox = target;
+             const isChecked = folderCheckbox.checked;
+             const containerId = folderCheckbox.dataset.folderContainerId;
+             const container = document.getElementById(containerId);
+             if (container) {
+                 container.querySelectorAll('.file-item input[type="checkbox"]').forEach(cb => { cb.checked = isChecked; });
+             }
+             folderCheckbox.indeterminate = false; // Clear indeterminate state
+             // No need to update this folder's state further, we just set it
+         }
+         else if (target.matches('.file-item input[type="checkbox"]')) {
+             const fileCheckbox = target;
+             const container = fileCheckbox.closest('.file-container');
+             if (container && container.id) {
+                 folderCheckboxToUpdate = fileListDiv.querySelector(`.folder-select-all[data-folder-container-id="${container.id}"]`);
+             }
+         }
+
+         // If a folder's state might have changed (either directly or via a child file)
+         if (folderCheckboxToUpdate) {
+             updateFolderCheckboxState(folderCheckboxToUpdate);
+         }
+
+         // *** ALWAYS update the main Select/Deselect All button after any change ***
+         updateSelectAllButtonState();
+     });
+
+     // Listener for changes in the File Type Filter checkboxes
+     filterContainer.addEventListener('change', (event) => {
+         if (event.target.classList.contains('file-type-filter')) {
+             displayFileList(); // Re-render the list when filters change
+         }
+     });
+
+     // Listener for the "Select All Visible" / "Deselect All Visible" button
+     selectAllVisibleButton.addEventListener('click', () => {
+         const visibleFileCheckboxes = fileListDiv.querySelectorAll('.file-item input[type="checkbox"]');
+         if (visibleFileCheckboxes.length === 0) return; // Nothing to do
+
+         // Determine if the action should be selecting or deselecting
+         // Check if the button *currently* says "Select All..." (meaning not all are selected)
+         const shouldSelect = selectAllVisibleButton.textContent.startsWith('Select');
+
+         // Set the state for all visible file checkboxes
+         visibleFileCheckboxes.forEach(cb => {
+             cb.checked = shouldSelect;
+         });
+
+         // Set the state for all visible folder checkboxes
+         const visibleFolderCheckboxes = fileListDiv.querySelectorAll('.folder-select-all');
+         visibleFolderCheckboxes.forEach(cb => {
+             cb.checked = shouldSelect;
+             cb.indeterminate = false; // Cannot be indeterminate after select/deselect all
+         });
+
+         // Update the button text immediately for the next click
+         updateSelectAllButtonState();
+     });
+
+
+    // --- Initial Setup Listeners ---
+    fileInput.addEventListener('change', handleFileSelect);
+    generateButton.addEventListener('click', generateOutput);
+    copyButton.addEventListener('click', copyOutputToClipboard);
+
+</script>
+
+</body>
+</html>
