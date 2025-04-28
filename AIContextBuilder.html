@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Context Builder from Text Files</title>
+    <style>
+        /* --- Base Styles --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            line-height: 1.6; padding: 20px; background-color: #f8f9fa; color: #212529;
+        }
+        .container {
+            background-color: #ffffff; padding: 30px; border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 900px; margin: auto;
+        }
+        h1, h2, h3 {
+            color: #343a40; border-bottom: 1px solid #dee2e6; padding-bottom: 10px; margin-top: 25px;
+        }
+        h1:first-of-type { margin-top: 0; }
+        label { display: block; margin-bottom: 8px; font-weight: 500; }
+        .input-wrapper label {
+             display: inline-block; background-color: #007bff; color: white; border: none;
+             padding: 10px 15px; border-radius: 5px; cursor: pointer; margin-bottom: 20px;
+             transition: background-color 0.2s ease; font-weight: normal;
+        }
+         .input-wrapper label:hover { background-color: #0056b3; }
+        input[type="file"] { opacity: 0; position: absolute; z-index: -1; }
+        #selected-folder-info { margin-bottom: 15px; font-style: italic; color: #6c757d; }
+
+        /* --- File Type Filter --- */
+        #file-type-filter-container {
+            margin-bottom: 15px; padding: 10px; background-color: #f1f3f5;
+            border: 1px solid #dee2e6; border-radius: 4px;
+        }
+        #file-type-filter-container h3 {
+            margin-top: 0; margin-bottom: 10px; font-size: 1.1em;
+            border-bottom: none; padding-bottom: 0;
+        }
+        #file-type-filter-container label {
+            display: inline-block; /* Align checkboxes horizontally */
+            margin-right: 15px;
+            font-weight: normal;
+            cursor: pointer;
+        }
+         #file-type-filter-container input[type="checkbox"] {
+             margin-right: 5px; vertical-align: middle; cursor: pointer;
+         }
+
+        /* --- File List & Folder Styling --- */
+        #fileList {
+            margin-bottom: 20px; max-height: 400px; /* Adjusted height slightly */
+            overflow-y: auto; border: 1px solid #dee2e6; padding: 15px;
+             background-color: #ffffff; border-radius: 4px;
+        }
+        .folder-header { /* (Unchanged) */
+            display: flex; align-items: center; gap: 8px; font-weight: bold;
+            margin-top: 12px; margin-bottom: 5px; padding: 5px;
+            border-bottom: 1px dashed #e9ecef; color: #495057;
+            position: relative; user-select: none; transition: background-color 0.15s ease;
+        }
+         .folder-header:hover { background-color: #f1f3f5; }
+         .folder-header:first-child { margin-top: 0; }
+         .folder-select-all { margin: 0; flex-shrink: 0; cursor: pointer; }
+         .folder-name { flex-grow: 1; cursor: pointer; padding: 3px 0; }
+         .folder-expand-indicator {
+            font-weight: bold; color: #007bff; width: 15px; text-align: center;
+             flex-shrink: 0; cursor: pointer; padding: 3px;
+         }
+         .folder-header.expanded .folder-expand-indicator::before { content: '−'; }
+         .folder-header:not(.expanded) .folder-expand-indicator::before { content: '+'; }
+        .file-container { /* (Unchanged) */
+            display: none; padding-left: 25px; border-left: 2px solid #e9ecef;
+            margin-left: 10px; margin-top: 5px;
+        }
+        .file-container.expanded { display: block; }
+        .file-item { /* (Unchanged - label) */
+            display: block; margin-bottom: 5px; padding: 4px 0 4px 5px;
+            border-radius: 3px; transition: background-color 0.2s ease; position: relative;
+        }
+        .file-item:hover { background-color: #f8f9fa; }
+        .file-item input[type="checkbox"] { /* (Unchanged) */
+            margin-right: 10px; vertical-align: middle; cursor: pointer;
+        }
+        .file-item span { vertical-align: middle; font-size: 0.95em; }
+         .file-item .file-path { font-size: 0.8em; color: #6c757d; margin-left: 5px; }
+
+        /* --- Buttons & Output Styling --- */
+        button { /* (Unchanged) */ } button:hover { /* ... */ } button:disabled { /* ... */ }
+        button#copyButton { /* (Unchanged) */ } button#copyButton:hover { /* ... */ } button#copyButton:disabled { /* ... */ }
+        textarea#output { /* WIDER TEXT AREA */
+            width: 100%; /* Use full container width */
+            box-sizing: border-box; /* Include padding/border in width calculation */
+            height: 380px; /* Increased height */
+            margin-top: 20px; padding: 15px; border: 1px solid #ced4da; border-radius: 4px;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 0.9em; line-height: 1.5; background-color: #f8f9fa;
+        }
+        #status { /* (Unchanged) */ }
+        .error { /* (Unchanged) */ } .success { /* ... */ } .warning { /* ... */ } .info { /* ... */ }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>AI Context Builder</h1>
+    <p>Load text-based files (JSON, TXT, MD, code, etc.) from a folder. Filter by type, select files/folders, and generate a combined text block for AI context.</p>
+    <p class="info">Note: Folder selection works best in Chromium-based browsers.</p>
+
+    <div class="input-wrapper">
+        <label for="fileInput">1. Select Folder Containing Files</label>
+        <!-- Removed accept attribute to allow selecting any file, filtering happens in JS -->
+        <input type="file" id="fileInput" webkitdirectory directory multiple>
+    </div>
+    <div id="selected-folder-info"></div>
+
+    <!-- File Type Filter Section -->
+    <div id="file-type-filter-container" style="display: none;"> <!-- Hidden initially -->
+         <h3>Filter Displayed File Types:</h3>
+         <!-- Checkboxes will be populated dynamically, or use a predefined list -->
+         <div id="file-type-filters">
+             <!-- Example: <label><input type="checkbox" class="file-type-filter" value=".json" checked> .json</label> -->
+         </div>
+    </div>
+
+    <h2>2. Choose Files to Include:</h2>
+    <div id="fileList">
+        <p class="info">Select a folder to load files.</p>
+    </div>
+
+    <button id="generateButton" disabled>3. Generate Combined Text</button>
+    <button id="copyButton" disabled>Copy to Clipboard</button>
+
+    <h2>Combined Text Output:</h2>
+    <textarea id="output" readonly placeholder="Generated text from selected files will appear here..."></textarea>
+    <div id="status"></div>
+
+</div>
+
+<script>
+    // --- Constants and Variables ---
+    const fileInput = document.getElementById('fileInput');
+    const fileListDiv = document.getElementById('fileList');
+    const generateButton = document.getElementById('generateButton');
+    const copyButton = document.getElementById('copyButton');
+    const outputTextArea = document.getElementById('output');
+    const statusDiv = document.getElementById('status');
+    const selectedFolderInfoDiv = document.getElementById('selected-folder-info');
+    const filterContainer = document.getElementById('file-type-filter-container');
+    const filterCheckboxesDiv = document.getElementById('file-type-filters');
+
+       // Allowed text-based extensions (lowercase) - EXPANDED LIST
+       const allowedTextExtensions = [
+        // Common Data Formats
+        '.json', '.xml', '.yaml', '.yml', '.csv', '.tsv', '.ini', '.toml', '.properties', '.env',
+        // Web Development
+        '.html', '.htm', '.css', '.js', '.jsx', '.ts', '.tsx', '.scss', '.sass', '.less', '.vue', '.svelte',
+        // Programming Languages (General)
+        '.txt', // Plain text is always good
+        '.py', // Python
+        '.java', // Java
+        '.cs', // C#
+        '.c', '.h', // C
+        '.cpp', '.hpp', '.cxx', '.hxx', // C++
+        '.rb', // Ruby
+        '.php', // PHP
+        '.go', // Go
+        '.rs', // Rust
+        '.swift', // Swift
+        '.kt', '.kts', // Kotlin
+        '.pl', // Perl
+        '.lua', // Lua
+        '.scala', // Scala
+        '.groovy', // Groovy
+        '.dart', // Dart
+        '.sh', // Shell Script (Bash, Zsh, etc.)
+        '.bash', '.zsh',
+        '.ps1', // PowerShell
+        '.bat', // Windows Batch
+        '.sql', // SQL
+        '.r', // R language
+        '.m', // MATLAB / Objective-C
+        '.mm', // Objective-C++
+        '.fs', '.fsx', // F#
+        '.clj', '.cljs', '.cljc', '.edn', // Clojure
+        '.ex', '.exs', // Elixir
+        '.erl', '.hrl', // Erlang
+        '.hs', '.lhs', // Haskell
+        '.jl', // Julia
+        '.lisp', '.lsp', // Lisp variants
+        '.pas', // Pascal
+        '.f', '.for', '.f90', '.f95', // Fortran
+        '.asm', // Assembly
+        // Markup & Documentation
+        '.md', '.markdown', // Markdown
+        '.rst', // reStructuredText
+        '.tex', // LaTeX
+        '.adoc', '.asciidoc', // AsciiDoc
+        '.wiki', // Generic Wiki syntax
+        // Configuration / Specific Tools
+        '.gradle', // Gradle build scripts
+        '.tf', // Terraform
+        '.dockerfile', // Docker
+        '.conf', '.config', // Generic config
+        '.log', // Log files
+        '.gitignore', // Git ignore files
+        '.gitattributes', // Git attributes
+        // Add any other specific text-based formats you frequently use
+    ];
+    
+    let loadedFiles = []; // { name, path, data: {type, content}, extension }
+    let selectedRootPathPrefix = ''; // To store the root folder name like "my-campaign-export/"
+    let availableExtensions = new Set(); // To track extensions found in the loaded files
+
+
+    // --- Core Functions ---
+
+    function handleFileSelect(event) {
+        const files = event.target.files;
+        if (!files.length) {
+            // Reset everything
+            fileListDiv.innerHTML = '<p class="info">No folder selected or folder is empty.</p>';
+            selectedFolderInfoDiv.textContent = ''; filterContainer.style.display = 'none';
+            generateButton.disabled = true; copyButton.disabled = true;
+            loadedFiles = []; selectedRootPathPrefix = ''; availableExtensions.clear();
+            return;
+        }
+
+        // Determine Root Path Prefix from the first file
+        selectedRootPathPrefix = '';
+        if (files.length > 0 && files[0].webkitRelativePath) {
+            const firstPath = files[0].webkitRelativePath;
+            const firstSlashIndex = firstPath.indexOf('/');
+            if (firstSlashIndex > -1) {
+                 selectedRootPathPrefix = firstPath.substring(0, firstSlashIndex + 1); // Include the slash
+            }
+            // Display root name without the prefix for clarity
+            const directoryName = selectedRootPathPrefix ? selectedRootPathPrefix.slice(0, -1) : 'Selected Folder';
+             selectedFolderInfoDiv.textContent = `Selected folder: "${directoryName}" (Processing...)`;
+        } else {
+             selectedFolderInfoDiv.textContent = `Selected folder (Processing...)`;
+        }
+
+
+        // Reset state for new load
+        loadedFiles = []; availableExtensions.clear();
+        fileListDiv.innerHTML = '<p class="info">Loading and parsing files...</p>';
+        statusDiv.textContent = ''; outputTextArea.value = '';
+        copyButton.disabled = true; generateButton.disabled = true;
+        filterContainer.style.display = 'none'; // Hide filters while loading
+
+
+        let filesProcessed = 0;
+        let validFilesFound = 0;
+        const filePromises = [];
+
+        for (const file of files) {
+            const lowerCaseName = file.name.toLowerCase();
+            const extension = lowerCaseName.substring(lowerCaseName.lastIndexOf('.'));
+
+            // Filter by allowed extensions AND ignore hidden files/folders
+            if (file.name[0] !== '.' && allowedTextExtensions.includes(extension)) {
+                validFilesFound++;
+                availableExtensions.add(extension); // Track found extensions
+                const promise = readFile(file).then(data => {
+                    loadedFiles.push({
+                        name: file.name,
+                        path: file.webkitRelativePath || file.name, // Full path including root
+                        data: data, // Object { type: 'json'/'text', content: ... }
+                        extension: extension
+                    });
+                }).catch(error => {
+                     statusDiv.innerHTML += `<p class="error">Error reading ${file.webkitRelativePath || file.name}: ${error.message}</p>`;
+                }).finally(() => { filesProcessed++; });
+                filePromises.push(promise);
+            } else {
+                filesProcessed++; // Count skipped files
+                // Optional: Log skipped files
+                // if (file.name[0] !== '.') console.log(`Skipping non-text or disallowed file: ${file.webkitRelativePath || file.name}`);
+            }
+        }
+
+        Promise.allSettled(filePromises).then(() => {
+             loadedFiles.sort((a, b) => a.path.localeCompare(b.path));
+             populateFileTypeFilters(); // Create filter checkboxes
+             displayFileList(); // Initial display based on default filters
+
+             if (loadedFiles.length > 0) {
+                  // Update selected folder text (remove processing message)
+                  const dirName = selectedRootPathPrefix ? selectedRootPathPrefix.slice(0, -1) : 'Selected Folder';
+                  selectedFolderInfoDiv.textContent = `Selected folder: "${dirName}"`;
+                  statusDiv.innerHTML = `<p class="info">Found ${loadedFiles.length} supported text file(s). Adjust filters and select files.</p>`;
+                  generateButton.disabled = false;
+                  filterContainer.style.display = 'block'; // Show filters
+             } else if (validFilesFound === 0 && files.length > 0) {
+                 fileListDiv.innerHTML = `<p class="warning">No supported text files (${allowedTextExtensions.join(', ')}) found in the selected folder.</p>`;
+                 selectedFolderInfoDiv.textContent = `Selected folder: "${selectedRootPathPrefix ? selectedRootPathPrefix.slice(0, -1) : 'Selected Folder'}"`;
+                 statusDiv.innerHTML = '<p class="warning">No supported files found.</p>';
+                  filterContainer.style.display = 'none';
+             } else { // Errors occurred during reading
+                 fileListDiv.innerHTML = `<p class="error">Some files were found but could not be read. Check console for errors.</p>`;
+                  selectedFolderInfoDiv.textContent = `Selected folder: "${selectedRootPathPrefix ? selectedRootPathPrefix.slice(0, -1) : 'Selected Folder'}"`;
+                 statusDiv.innerHTML = '<p class="error">Failed to load some or all files.</p>';
+                  filterContainer.style.display = 'none';
+             }
+             fileInput.value = ''; // Allow re-selecting same folder
+        });
+    }
+
+    // Updated readFile to return structured object
+    function readFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            const lowerCaseName = file.name.toLowerCase();
+            const isJson = lowerCaseName.endsWith('.json');
+
+            reader.onload = (e) => {
+                const textContent = e.target.result;
+                if (isJson) {
+                    try {
+                        const json = JSON.parse(textContent);
+                        if (typeof json !== 'object' || json === null) { throw new Error('Not a JSON object'); }
+                        resolve({ type: 'json', content: json });
+                    } catch (err) {
+                        // If JSON parsing fails, treat it as text? Or reject? Let's reject for now.
+                        reject(new Error(`Invalid JSON (${err.message})`));
+                        // Alternative: resolve({ type: 'text', content: textContent });
+                    }
+                } else {
+                    // For all other allowed text types
+                    resolve({ type: 'text', content: textContent });
+                }
+            };
+            reader.onerror = (e) => { reject(new Error(`File read error`)); };
+            reader.readAsText(file); // Read all allowed types as text initially
+        });
+    }
+
+     function stripHtml(html) { /* Unchanged */ if (!html || typeof html !== 'string') return ''; try { const template = document.createElement('template'); template.innerHTML = html; return template.content.textContent || ""; } catch (e) { try { const doc = new DOMParser().parseFromString(html, 'text/html'); return doc.body.textContent || ""; } catch(e2) { return html; } } }
+
+    // Updated formatGenericEntry to handle {type, content}
+    function formatGenericEntry(file) {
+        const fileData = file.data; // This is now { type: 'json'/'text', content: ... }
+        if (!fileData) return `--- Error: Could not process ${file.path} ---`;
+
+        // Use full path for source info, maybe relative later if needed
+        const sourcePath = file.path;
+        let entryName = file.name; // Default to filename
+        let outputContent = '';
+
+        if (fileData.type === 'json') {
+            const jsonData = fileData.content;
+            // Try to find name/title within JSON
+            entryName = jsonData.name || jsonData.title || file.name.replace('.json', '');
+            // Try to find common content fields
+            let foundContent = '';
+            const contentFields = ['description', 'content', 'text', 'body', 'entry_parsed', 'entry'];
+            for (const field of contentFields) {
+                if (jsonData[field] && typeof jsonData[field] === 'string') {
+                    foundContent = stripHtml(jsonData[field]).replace(/\s\s+/g, ' ').trim();
+                    break;
+                }
+            }
+            if (foundContent) {
+                 outputContent = `Content:\n${foundContent}\n`;
+            } else {
+                 // Fallback: Pretty print JSON if no specific content field found
+                 outputContent = `Full Data (JSON):\n`;
+                 try { outputContent += JSON.stringify(jsonData, null, 2); } catch (e) { outputContent += "(Error stringifying JSON)"; }
+                 outputContent += `\n`;
+            }
+        } else { // type === 'text'
+            entryName = file.name; // Use filename
+            outputContent = `Content:\n${fileData.content || '(Empty file)'}\n`; // Use raw text content
+        }
+
+        // Construct the final output block
+        let output = `--- Entry: ${entryName} ---\n`;
+        output += `Source: ${sourcePath.replace(selectedRootPathPrefix, '')}\n`; // Show relative path in output
+        output += `Type: ${fileData.type} (${file.extension})\n`;
+        output += `\n${outputContent}`;
+        output += `--- End Entry: ${entryName} ---\n\n`;
+        return output;
+    }
+
+     function generateOutput() { /* Unchanged - selector is correct */ const selectedIndices = Array.from(fileListDiv.querySelectorAll('.file-item input[type="checkbox"]:checked')).map(cb => parseInt(cb.value)); if (selectedIndices.length === 0) { /* ... */ return; } let combinedOutput = `Context Information from ${selectedIndices.length} Selected Source(s):\n`; if(selectedRootPathPrefix) { combinedOutput += `Base Folder: ${selectedRootPathPrefix.slice(0,-1)}\n`; } combinedOutput += `========================================\n\n`; let errorCount = 0; selectedIndices.forEach(index => { const file = loadedFiles[index]; if (file) { try { combinedOutput += formatGenericEntry(file); } catch (error) { /* ... */ errorCount++; } } }); outputTextArea.value = combinedOutput; copyButton.disabled = false; /* ... status update ... */ outputTextArea.scrollTop = 0; }
+     function copyOutputToClipboard() { /* Unchanged */ /* ... */ }
+
+    // --- Path and Display Logic ---
+
+    // Gets directory path RELATIVE to the selected root
+    function getRelativeDirectory(fullPath) {
+        let relativePath = fullPath.replace(selectedRootPathPrefix, ''); // Strip root
+        const lastSlash = relativePath.lastIndexOf('/');
+        if (lastSlash === -1 || lastSlash === 0) { // File in root or path is just filename
+             return '/'; // Represent root level consistently
+        }
+        return relativePath.substring(0, lastSlash);
+    }
+
+    // Populates the file type filter checkboxes based on found extensions
+    function populateFileTypeFilters() {
+        filterCheckboxesDiv.innerHTML = ''; // Clear existing
+        const sortedExtensions = Array.from(availableExtensions).sort();
+
+        // Add an "All" option? Maybe later. Start with individual types.
+        sortedExtensions.forEach(ext => {
+            const label = document.createElement('label');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.classList.add('file-type-filter');
+            checkbox.value = ext;
+            checkbox.checked = true; // Default to all found types checked
+
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(` ${ext}`)); // Add space before extension
+            filterCheckboxesDiv.appendChild(label);
+        });
+    }
+
+    // Gets the set of currently selected file extensions from the filter UI
+    function getActiveFilters() {
+        const active = new Set();
+        filterCheckboxesDiv.querySelectorAll('.file-type-filter:checked').forEach(cb => {
+            active.add(cb.value);
+        });
+        return active;
+    }
+
+    function updateFolderCheckboxState(folderCheckbox) { /* Unchanged */ /* ... checks files IN CONTAINER, sets state ... */ }
+
+    // --- displayFileList: Renders the list based on current filters ---
+    function displayFileList() {
+        // Ensure filters are populated if availableExtensions exist
+        if (availableExtensions.size > 0 && filterCheckboxesDiv.children.length === 0) {
+             populateFileTypeFilters();
+             filterContainer.style.display = 'block';
+         } else if (availableExtensions.size === 0) {
+             filterContainer.style.display = 'none'; // Hide if no extensions found/loaded
+         }
+
+
+        const activeFilters = getActiveFilters();
+        fileListDiv.innerHTML = ''; // Clear previous list
+
+        let currentRelativeDir = null;
+        let fileContainer = null;
+        let folderIndex = 0;
+        let itemsDisplayed = 0;
+
+        loadedFiles.forEach((file, index) => {
+            // Apply extension filter
+            if (!activeFilters.has(file.extension)) {
+                return; // Skip file if its extension is not in the active filter set
+            }
+
+            const relativeDirectory = getRelativeDirectory(file.path); // Get path relative to root
+
+            // Check if folder header needs to be created
+            if (relativeDirectory !== currentRelativeDir) {
+                currentRelativeDir = relativeDirectory;
+                folderIndex++;
+                const containerId = `folder-container-${folderIndex}`;
+
+                // --- Create Header Elements ---
+                const header = document.createElement('div');
+                header.classList.add('folder-header');
+                header.dataset.controlsContainerId = containerId;
+
+                const folderCheckbox = document.createElement('input');
+                folderCheckbox.type = 'checkbox';
+                folderCheckbox.classList.add('folder-select-all');
+                folderCheckbox.title = `Select/Deselect all visible files in ${currentRelativeDir}`;
+                folderCheckbox.dataset.folderContainerId = containerId;
+
+                const expandIndicator = document.createElement('span');
+                expandIndicator.classList.add('folder-expand-indicator');
+                expandIndicator.title = 'Expand/Collapse Folder';
+
+                const folderNameSpan = document.createElement('span');
+                folderNameSpan.classList.add('folder-name');
+                // Display relative path, handle root case
+                folderNameSpan.textContent = (currentRelativeDir === '/') ? '(Root Folder)' : currentRelativeDir;
+
+                header.appendChild(folderCheckbox);
+                header.appendChild(expandIndicator);
+                header.appendChild(folderNameSpan);
+                fileListDiv.appendChild(header);
+
+                // --- Create File Container ---
+                fileContainer = document.createElement('div');
+                fileContainer.classList.add('file-container');
+                fileContainer.id = containerId;
+                fileListDiv.appendChild(fileContainer);
+            }
+
+            // --- Create File Item Elements (only if its folder header was created) ---
+             if (fileContainer) {
+                itemsDisplayed++;
+                const itemLabel = document.createElement('label');
+                itemLabel.classList.add('file-item');
+                itemLabel.htmlFor = `file-checkbox-${index}`;
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `file-checkbox-${index}`;
+                checkbox.value = index; // Links to the original loadedFiles index
+                checkbox.checked = false; // Start deselected
+
+                const nameSpan = document.createElement('span');
+                // Try to get name from JSON, fallback to filename
+                let displayName = file.name;
+                if (file.data.type === 'json' && (file.data.content.name || file.data.content.title)) {
+                    displayName = file.data.content.name || file.data.content.title;
+                }
+                nameSpan.textContent = displayName;
+
+                const pathSpan = document.createElement('span');
+                pathSpan.classList.add('file-path');
+                pathSpan.textContent = `[${file.name}]`; // Show original filename
+
+                itemLabel.appendChild(checkbox);
+                itemLabel.appendChild(nameSpan);
+                itemLabel.appendChild(pathSpan);
+                fileContainer.appendChild(itemLabel);
+             }
+        }); // End loop through loadedFiles
+
+        if(itemsDisplayed === 0 && loadedFiles.length > 0) {
+             fileListDiv.innerHTML = '<p class="info">No files match the current filter selection.</p>';
+         } else if (itemsDisplayed === 0 && loadedFiles.length === 0) {
+             // Keep the initial message or the "no supported files found" message
+             if (!fileListDiv.querySelector('p')) { // Avoid overwriting specific error messages
+                 fileListDiv.innerHTML = '<p class="info">Select a folder to load files.</p>';
+             }
+         } else {
+             // After adding all visible items, update folder checkbox states
+             document.querySelectorAll('.folder-select-all').forEach(updateFolderCheckboxState);
+         }
+    }
+
+
+    // --- Event Listeners ---
+
+    // Listener for clicks within the file list (Expand/Collapse)
+    fileListDiv.addEventListener('click', (event) => { /* Unchanged */ const target = event.target; if (target.classList.contains('folder-expand-indicator') || target.classList.contains('folder-name')) { const header = target.closest('.folder-header'); if (header && header.dataset.controlsContainerId) { const containerId = header.dataset.controlsContainerId; const container = document.getElementById(containerId); if (container) { header.classList.toggle('expanded'); container.classList.toggle('expanded'); } } } });
+
+     // Listener for Checkbox Changes within the file list (Select/Deselect)
+     fileListDiv.addEventListener('change', (event) => {
+         const target = event.target;
+
+         // 1. Handle Folder Select/Deselect All Checkbox
+         if (target.classList.contains('folder-select-all')) {
+             const folderCheckbox = target;
+             const isChecked = folderCheckbox.checked; // Get the NEW state
+             const containerId = folderCheckbox.dataset.folderContainerId;
+             const container = document.getElementById(containerId);
+
+             // console.log(`Folder ${containerId} checkbox clicked. New state: ${isChecked}`); // Optional Debug
+
+             if (container) {
+                 const fileCheckboxes = container.querySelectorAll('.file-item input[type="checkbox"]');
+                 // console.log(`Found ${fileCheckboxes.length} file checkboxes to update.`); // Optional Debug
+
+                 // --- Force update all child checkboxes ---
+                 fileCheckboxes.forEach(cb => {
+                     cb.checked = isChecked;
+                 });
+                 // --- End force update ---
+
+             } else {
+                 console.error("Container element not found for folder checkbox with container ID:", containerId);
+             }
+
+             // After setting all children, the parent cannot be indeterminate
+             folderCheckbox.indeterminate = false;
+         }
+
+         // 2. Handle Individual File Checkbox Change
+         else if (target.matches('.file-item input[type="checkbox"]')) {
+             const fileCheckbox = target;
+             // Find the direct parent container
+             const container = fileCheckbox.closest('.file-container');
+             if (container && container.id) {
+                 // Find the folder checkbox linked to this container
+                 const folderCheckbox = fileListDiv.querySelector(`.folder-select-all[data-folder-container-id="${container.id}"]`);
+                 if (folderCheckbox) {
+                     // Update the parent folder's state (checked/unchecked/indeterminate)
+                     updateFolderCheckboxState(folderCheckbox);
+                 } else {
+                      console.error("Could not find parent folder checkbox for container:", container.id);
+                 }
+             } else {
+                  console.error("Could not find parent container for file checkbox:", fileCheckbox.id);
+             }
+         }
+     });
+
+     // Listener for changes in the File Type Filter checkboxes
+     filterContainer.addEventListener('change', (event) => {
+         if (event.target.classList.contains('file-type-filter')) {
+             displayFileList(); // Re-render the list when filters change
+         }
+     });
+
+
+    // --- Initial Setup Listeners ---
+    fileInput.addEventListener('change', handleFileSelect);
+    generateButton.addEventListener('click', generateOutput);
+    copyButton.addEventListener('click', copyOutputToClipboard);
+
+</script>
+
+</body>
+</html>
